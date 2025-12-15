@@ -10,7 +10,7 @@ public class FileSystemService
     /// <summary>
     /// Lists all files and directories in the specified path
     /// </summary>
-    public List<FileItem> ListDirectory(string path)
+    public List<FileItem> ListDirectory(string path, bool showHidden = false)
     {
         var items = new List<FileItem>();
 
@@ -37,6 +37,12 @@ public class FileSystemService
             {
                 try
                 {
+                    // Filter hidden directories unless showHidden is true
+                    if (!showHidden && (dir.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
+                    {
+                        continue;
+                    }
+
                     items.Add(new FileItem
                     {
                         Name = dir.Name,
@@ -58,6 +64,12 @@ public class FileSystemService
             {
                 try
                 {
+                    // Filter hidden files unless showHidden is true
+                    if (!showHidden && (file.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
+                    {
+                        continue;
+                    }
+
                     items.Add(new FileItem
                     {
                         Name = file.Name,

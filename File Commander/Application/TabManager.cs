@@ -12,6 +12,7 @@ public class TabManager
     private readonly ConfigService _configService;
     private readonly List<TabState> _tabs = new();
     private int _activeTabIndex = 0;
+    private FileSystemWatcher? _watcher;
 
     public TabState ActiveTab => _tabs[_activeTabIndex];
     public IReadOnlyList<TabState> Tabs => _tabs.AsReadOnly();
@@ -24,6 +25,18 @@ public class TabManager
     {
         _fileSystemService = fileSystemService;
         _configService = configService;
+
+        // Subscribe to settings changes to update watcher
+        _configService.SettingsChanged += (s, settings) => SetupDirectoryWatcher(settings);
+
+        // Subscribe to tab changes to update watcher for ActiveTabOnly mode
+        TabChanged += (s, e) =>
+        {
+            if (_configService.Settings.DirectoryUpdateMode == DirectoryUpdateMode.ActiveTabOnly)
+            {
+                SetupDirectoryWatcher(_configService.Settings);
+            }
+        };
     }
 
     /// <summary>
@@ -84,15 +97,16 @@ public class TabManager
     public void RefreshActivePane()
     {
         var tab = ActiveTab;
+        var showHidden = _configService.Settings.ShowHiddenFiles;
 
         if (tab.DisplayMode == DisplayMode.SinglePane || tab.IsLeftPaneActive)
         {
-            tab.FilesActive = _fileSystemService.ListDirectory(tab.CurrentPath);
+            tab.FilesActive = _fileSystemService.ListDirectory(tab.CurrentPath, showHidden);
             tab.SelectedIndexActive = Math.Min(tab.SelectedIndexActive, Math.Max(0, tab.FilesActive.Count - 1));
         }
         else
         {
-            tab.FilesPassive = _fileSystemService.ListDirectory(tab.PathPassive);
+            tab.FilesPassive = _fileSystemService.ListDirectory(tab.PathPassive, showHidden);
             tab.SelectedIndexPassive = Math.Min(tab.SelectedIndexPassive, Math.Max(0, tab.FilesPassive.Count - 1));
         }
 
@@ -106,13 +120,14 @@ public class TabManager
     public void RefreshBothPanes()
     {
         var tab = ActiveTab;
+        var showHidden = _configService.Settings.ShowHiddenFiles;
 
-        tab.FilesActive = _fileSystemService.ListDirectory(tab.CurrentPath);
+        tab.FilesActive = _fileSystemService.ListDirectory(tab.CurrentPath, showHidden);
         tab.SelectedIndexActive = Math.Min(tab.SelectedIndexActive, Math.Max(0, tab.FilesActive.Count - 1));
 
         if (tab.DisplayMode == DisplayMode.DualPane)
         {
-            tab.FilesPassive = _fileSystemService.ListDirectory(tab.PathPassive);
+            tab.FilesPassive = _fileSystemService.ListDirectory(tab.PathPassive, showHidden);
             tab.SelectedIndexPassive = Math.Min(tab.SelectedIndexPassive, Math.Max(0, tab.FilesPassive.Count - 1));
         }
 
@@ -204,6 +219,101 @@ public class TabManager
     public void NotifyStateChanged()
     {
         TabStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Sets up directory watcher based on configuration settings
+    /// </summary>
+    private void SetupDirectoryWatcher(AppSettings settings)
+    {
+        // Dispose existing watcher
+        _watcher?.Dispose();
+        _watcher = null;
+
+        // Don't create watcher if manual mode
+        if (settings.DirectoryUpdateMode == DirectoryUpdateMode.Manual)
+        {
+            return;
+        }
+
+        // Don't create watcher if no tabs exist yet
+        if (_tabs.Count == 0)
+        {
+            return;
+        }
+
+        string watchPath;
+
+        if (settings.DirectoryUpdateMode == DirectoryUpdateMode.ActiveTabOnly)
+        {
+            // Watch only the active tab's current path
+            watchPath = ActiveTab.CurrentPath;
+        }
+        else // AllTabs
+        {
+            // For all tabs mode, watch the active tab's path
+            // Note: Proper implementation would require multiple watchers for all tabs
+            // For now, we watch the active tab and refresh all tabs on changes
+            watchPath = ActiveTab.CurrentPath;
+        }
+
+        if (!Directory.Exists(watchPath))
+        {
+            return;
+        }
+
+        try
+        {
+            _watcher = new FileSystemWatcher(watchPath)
+            {
+                NotifyFilter = NotifyFilters.FileName |
+                              NotifyFilters.DirectoryName |
+                              NotifyFilters.LastWrite |
+                              NotifyFilters.Size,
+                EnableRaisingEvents = true,
+                IncludeSubdirectories = false
+            };
+
+            _watcher.Changed += OnDirectoryChanged;
+            _watcher.Created += OnDirectoryChanged;
+            _watcher.Deleted += OnDirectoryChanged;
+            _watcher.Renamed += OnDirectoryChanged;
+        }
+        catch (Exception)
+        {
+            // Ignore errors setting up watcher (e.g., permission denied)
+            _watcher?.Dispose();
+            _watcher = null;
+        }
+    }
+
+    /// <summary>
+    /// Handles directory change events from FileSystemWatcher
+    /// </summary>
+    private void OnDirectoryChanged(object sender, FileSystemEventArgs e)
+    {
+        // Use MainLoop.Invoke to safely update UI from background thread
+        Terminal.Gui.Application.MainLoop?.Invoke(() =>
+        {
+            if (_configService.Settings.DirectoryUpdateMode == DirectoryUpdateMode.AllTabs)
+            {
+                // Refresh all panes in all tabs
+                RefreshBothPanes();
+            }
+            else // ActiveTabOnly
+            {
+                // Only refresh the active tab
+                RefreshActivePane();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Initializes the directory watcher for the first time
+    /// </summary>
+    public void InitializeWatcher()
+    {
+        SetupDirectoryWatcher(_configService.Settings);
     }
 }
 

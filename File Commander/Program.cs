@@ -30,6 +30,9 @@ class Program
 
         tabManager.CreateTab(initialPath);
 
+        // Initialize directory watcher based on config
+        tabManager.InitializeWatcher();
+
         // Initialize Terminal.Gui
         Terminal.Gui.Application.Init();
 
