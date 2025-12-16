@@ -58,12 +58,14 @@ public class FilePaneView : FrameView
 
             var file = _files[args.Row];
 
-            // Apply brighter color for directories (subtle replacement for D/F icons)
-            if (file.IsDirectory && file.Name != "..")
+            // Don't override selection colors - Terminal.Gui handles this
+            // Just set the text color for directories when NOT selected
+            if (file.IsDirectory && file.Name != ".." && args.Row != _listView.SelectedItem)
             {
-                // Use BrightCyan for directories to make them stand out
+                // Use BrightCyan for directories, keep default background
                 args.RowAttribute = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
             }
+            // For selected items, Terminal.Gui will use the focus/selection colors automatically
         };
     }
 

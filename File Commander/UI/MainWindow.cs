@@ -67,16 +67,16 @@ public class MainWindow : Window
             X = 0,
             Y = 1,  // Below tab bar
             Width = Dim.Fill(),
-            Height = Dim.Fill() - 4  // Leave room for tab bar and status pane
+            Height = Dim.Fill() - 7  // Leave room for tab bar (1) and status pane (6)
         };
 
-        // Dual pane container
+        _singlePaneContainer.Add(_treeView, _singleFilePane, _previewPane);
         _dualPaneContainer = new View
         {
             X = 0,
             Y = 1,  // Below tab bar
             Width = Dim.Fill(),
-            Height = Dim.Fill() - 4  // Leave room for tab bar and status pane
+            Height = Dim.Fill() - 7  // Leave room for tab bar (1) and status pane (6)
         };
 
         // Left pane
@@ -137,9 +137,9 @@ public class MainWindow : Window
 
         _singlePaneContainer.Add(_treeView, _singleFilePane, _previewPane);
 
-        // Status pane (replaces status and help bars)
-        _statusPane.Y = Pos.AnchorEnd(3);
-        _statusPane.Height = 3;
+        // Status pane (replaces status and help bars) - increased default height
+        _statusPane.Y = Pos.AnchorEnd(6);
+        _statusPane.Height = 6;
 
         // Initialize tab labels
         UpdateTabBar();
@@ -151,6 +151,9 @@ public class MainWindow : Window
     {
         _tabManager.TabChanged += (s, e) => UpdateTabBar();
         _tabManager.TabStateChanged += (s, e) => UpdateDisplay();
+        _tabManager.DirectoryRefreshed += (s, path) =>
+            _statusPane.LogActivity($"Directory refreshed: {path}");
+
         _commandHandler.StatusMessage += (s, msg) =>
         {
             _statusPane.AddCommandHistory(msg);
@@ -250,9 +253,9 @@ public class MainWindow : Window
 
                 // Adjust main pane container height based on current status pane height
                 var statusPaneHeight = _statusPane.Frame.Height;
-                var newMainHeight = statusPaneHeight <= 3
-                    ? Dim.Fill() - 4
-                    : Dim.Fill() - 9;
+                var newMainHeight = statusPaneHeight <= 6
+                    ? Dim.Fill() - 7   // Normal: tab (1) + status (6)
+                    : Dim.Fill() - 13; // Expanded: tab (1) + status (12)
 
                 _dualPaneContainer.Height = newMainHeight;
                 _singlePaneContainer.Height = newMainHeight;

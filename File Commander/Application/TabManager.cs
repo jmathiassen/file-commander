@@ -20,6 +20,7 @@ public class TabManager
 
     public event EventHandler? TabChanged;
     public event EventHandler? TabStateChanged;
+    public event EventHandler<string>? DirectoryRefreshed;
 
     public TabManager(FileSystemService fileSystemService, ConfigService configService)
     {
@@ -111,6 +112,7 @@ public class TabManager
         }
 
         tab.IsDirty = false;
+        DirectoryRefreshed?.Invoke(this, tab.IsLeftPaneActive ? tab.CurrentPath : tab.PathPassive);
         TabStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -132,6 +134,7 @@ public class TabManager
         }
 
         tab.IsDirty = false;
+        DirectoryRefreshed?.Invoke(this, $"{tab.CurrentPath} and {tab.PathPassive}");
         TabStateChanged?.Invoke(this, EventArgs.Empty);
     }
 

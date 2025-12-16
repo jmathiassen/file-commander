@@ -12,12 +12,12 @@ public class StatusPaneView : FrameView
 {
     private readonly IntelligentTaskQueueService _taskQueue;
     private TabView _tabView = null!;
-    private ListView _jobListView = null!;
-    private ListView _historyListView = null!;
+    private ListView _jobQueueListView = null!;
+    private ListView _activityLogListView = null!;
     private Label _infoLabel = null!;
 
-    private readonly List<string> _commandHistory = new();
-    private const int MAX_HISTORY = 100;
+    private readonly List<string> _activityLog = new();
+    private const int MAX_LOG_ENTRIES = 200;
 
     public StatusPaneView(IntelligentTaskQueueService taskQueue) : base("Status")
     {
@@ -30,7 +30,7 @@ public class StatusPaneView : FrameView
     {
         X = 0;
         Width = Dim.Fill();
-        Height = 3;
+        Height = 6; // Increased default height for better visibility
 
         _tabView = new TabView
         {
@@ -40,23 +40,23 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
-        // Tab 1: Job Queue/Status
-        var jobTab = new TabView.Tab("Jobs", CreateJobView());
+        // Tab 1: Job Queue - Shows queued and running jobs
+        var jobQueueTab = new TabView.Tab("Job Queue", CreateJobQueueView());
 
-        // Tab 2: Command History
-        var historyTab = new TabView.Tab("History", CreateHistoryView());
+        // Tab 2: Activity Log - Shows all operations, refreshes, errors
+        var activityLogTab = new TabView.Tab("Activity Log", CreateActivityLogView());
 
-        // Tab 3: Overview/Info
+        // Tab 3: System Info
         var infoTab = new TabView.Tab("Info", CreateInfoView());
 
-        _tabView.AddTab(jobTab, false);
-        _tabView.AddTab(historyTab, false);
+        _tabView.AddTab(jobQueueTab, false);
+        _tabView.AddTab(activityLogTab, false);
         _tabView.AddTab(infoTab, false);
 
         Add(_tabView);
     }
 
-    private View CreateJobView()
+    private View CreateJobQueueView()
     {
         var view = new View
         {
@@ -66,7 +66,7 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
-        _jobListView = new ListView
+        _jobQueueListView = new ListView
         {
             X = 0,
             Y = 0,
@@ -74,11 +74,11 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
-        view.Add(_jobListView);
+        view.Add(_jobQueueListView);
         return view;
     }
 
-    private View CreateHistoryView()
+    private View CreateActivityLogView()
     {
         var view = new View
         {
@@ -88,7 +88,7 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
-        _historyListView = new ListView
+        _activityLogListView = new ListView
         {
             X = 0,
             Y = 0,
@@ -96,7 +96,7 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
-        view.Add(_historyListView);
+        view.Add(_activityLogListView);
         return view;
     }
 
@@ -125,39 +125,52 @@ public class StatusPaneView : FrameView
 
     private void SetupEventHandlers()
     {
-        // Subscribe to task queue events
-        _taskQueue.JobQueued += (s, job) => UpdateJobList();
-        _taskQueue.JobStarted += (s, job) => UpdateJobList();
+        // Subscribe to task queue events for job queue display
+        _taskQueue.JobQueued += (s, job) =>
+        {
+            LogActivity($"Job queued: {job.Operation} {Path.GetFileName(job.SourcePath)}");
+            UpdateJobQueue();
+        };
+
+        _taskQueue.JobStarted += (s, job) =>
+        {
+            LogActivity($"Job started: {job.Operation} {Path.GetFileName(job.SourcePath)}");
+            UpdateJobQueue();
+        };
+
         _taskQueue.JobCompleted += (s, job) =>
         {
-            AddCommandHistory($"✓ Job completed: {job.Operation} {Path.GetFileName(job.SourcePath)}");
-            UpdateJobList();
+            LogActivity($"✓ Completed: {job.Operation} {Path.GetFileName(job.SourcePath)}");
+            UpdateJobQueue();
         };
+
         _taskQueue.JobFailed += (s, job) =>
         {
-            AddCommandHistory($"✗ Job failed: {job.Operation} {Path.GetFileName(job.SourcePath)} - {job.ErrorMessage}");
-            UpdateJobList();
+            LogActivity($"✗ Failed: {job.Operation} {Path.GetFileName(job.SourcePath)} - {job.ErrorMessage}");
+            UpdateJobQueue();
         };
 
         // Subscribe to progress updates for live display
         _taskQueue.ProgressChanged += (s, progressData) =>
         {
-            UpdateJobList(); // Refresh to show updated progress
+            UpdateJobQueue(); // Refresh to show updated progress
         };
     }
 
     /// <summary>
-    /// Updates the job list display - shows only active jobs (queued/running)
+    /// Updates the job queue display - shows only queued and running jobs
     /// </summary>
-    private void UpdateJobList()
+    private void UpdateJobQueue()
     {
         var jobs = _taskQueue.ActiveJobs
             .Where(j => j.Status == JobStatus.Queued || j.Status == JobStatus.Running)
             .ToList();
 
         var displayItems = jobs.Select(j =>
-            $"[{j.Status}] {j.Operation} {Path.GetFileName(j.SourcePath)} ({j.Progress}%)"
-        ).ToList();
+        {
+            var progressBar = CreateProgressBar(j.Progress);
+            return $"[{j.Status,-8}] {j.Operation,-6} {Path.GetFileName(j.SourcePath),-30} {progressBar} {j.Progress}%";
+        }).ToList();
 
         if (displayItems.Count == 0)
         {
@@ -166,23 +179,46 @@ public class StatusPaneView : FrameView
 
         Terminal.Gui.Application.MainLoop.Invoke(() =>
         {
-            _jobListView.SetSource(displayItems);
+            _jobQueueListView.SetSource(displayItems);
         });
     }
 
     /// <summary>
-    /// Adds a command to the history
+    /// Creates a simple ASCII progress bar
+    /// </summary>
+    private string CreateProgressBar(int progress)
+    {
+        const int barWidth = 20;
+        var filled = (int)(progress / 100.0 * barWidth);
+        var empty = barWidth - filled;
+        return $"[{new string('█', filled)}{new string('░', empty)}]";
+    }
+
+    /// <summary>
+    /// Adds an entry to the activity log with timestamp
+    /// </summary>
+    public void LogActivity(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+        _activityLog.Insert(0, $"{timestamp} │ {message}");
+
+        if (_activityLog.Count > MAX_LOG_ENTRIES)
+        {
+            _activityLog.RemoveRange(MAX_LOG_ENTRIES, _activityLog.Count - MAX_LOG_ENTRIES);
+        }
+
+        Terminal.Gui.Application.MainLoop?.Invoke(() =>
+        {
+            _activityLogListView.SetSource(_activityLog);
+        });
+    }
+
+    /// <summary>
+    /// Adds a command to the activity log (for backwards compatibility)
     /// </summary>
     public void AddCommandHistory(string command)
     {
-        _commandHistory.Insert(0, $"{DateTime.Now:HH:mm:ss} - {command}");
-
-        if (_commandHistory.Count > MAX_HISTORY)
-        {
-            _commandHistory.RemoveRange(MAX_HISTORY, _commandHistory.Count - MAX_HISTORY);
-        }
-
-        _historyListView.SetSource(_commandHistory);
+        LogActivity(command);
     }
 
     /// <summary>
@@ -222,22 +258,22 @@ public class StatusPaneView : FrameView
         _tabView.SelectedTab = _tabView.Tabs.ElementAt(nextIndex);
     }
 
-    private int _currentHeight = 3;
+    private int _currentHeight = 6;
 
     /// <summary>
-    /// Resizes the status pane (toggle between compact and expanded)
+    /// Resizes the status pane (toggle between normal and expanded)
     /// </summary>
     public void ToggleSize()
     {
-        if (_currentHeight == 3)
+        if (_currentHeight == 6)
         {
-            _currentHeight = 8;
-            Height = 8;
+            _currentHeight = 12;
+            Height = 12;
         }
         else
         {
-            _currentHeight = 3;
-            Height = 3;
+            _currentHeight = 6;
+            Height = 6;
         }
     }
 
