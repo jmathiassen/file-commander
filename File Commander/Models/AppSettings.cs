@@ -47,9 +47,19 @@ public class AppSettings
     public bool FollowSymlinks { get; set; } = false;
 
     /// <summary>
+    /// Show file/directory icons (D/F prefix)
+    /// </summary>
+    public bool ShowFileIcons { get; set; } = false;
+
+    /// <summary>
     /// Use narrow icons (single-width characters) instead of emoji
     /// </summary>
     public bool UseNarrowIcons { get; set; } = true;
+
+    /// <summary>
+    /// Show file extensions in a separate column (Total Commander style)
+    /// </summary>
+    public bool ShowExtensionsInColumn { get; set; } = false;
 
     /// <summary>
     /// Auto-calculate directory sizes on marking

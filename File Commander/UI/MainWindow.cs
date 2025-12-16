@@ -24,6 +24,7 @@ public class MainWindow : Window
     private View _dualPaneContainer = null!;
     private View _tabBar = null!;
     private List<Label> _tabLabels = new();
+    private int _paneSplitPercent = 50; // Left pane percentage
 
     // Single pane mode components
     private TreeView _treeView = null!;
@@ -268,6 +269,27 @@ public class MainWindow : Window
                 return;
             }
 
+            if (function == CommandFunction.INCREASE_LEFT_PANE)
+            {
+                AdjustPaneSplit(5);
+                e.Handled = true;
+                return;
+            }
+
+            if (function == CommandFunction.DECREASE_LEFT_PANE)
+            {
+                AdjustPaneSplit(-5);
+                e.Handled = true;
+                return;
+            }
+
+            if (function == CommandFunction.RESET_PANE_SPLIT)
+            {
+                _paneSplitPercent = 50;
+                UpdatePaneSplit();
+                e.Handled = true;
+                return;
+            }
             // Execute command through handler
             _commandHandler.ExecuteFunction(function);
 
@@ -330,13 +352,17 @@ public class MainWindow : Window
 
             // Update both panes - normal dual pane mode
             _leftPane.Title = $"Left: {tab.CurrentPath}";
+            _leftPane.SetCurrentPath(tab.CurrentPath);
             _leftPane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
-                _configService.Settings.UseNarrowIcons, _configService.Settings.ShowSecondsInDate);
+                _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
             _leftPane.SetActive(tab.IsLeftPaneActive);
 
             _rightPane.Title = $"Right: {tab.PathPassive}";
+            _rightPane.SetCurrentPath(tab.PathPassive);
             _rightPane.SetFiles(tab.FilesPassive, tab.MarkedFiles, tab.SelectedIndexPassive,
-                _configService.Settings.UseNarrowIcons, _configService.Settings.ShowSecondsInDate);
+                _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
             _rightPane.SetActive(!tab.IsLeftPaneActive);
 
             // CRITICAL FIX: Explicitly set focus on the active pane
@@ -399,8 +425,10 @@ public class MainWindow : Window
 
         // Update file pane
         _singleFilePane.Title = $"Files: {tab.CurrentPath}";
+        _singleFilePane.SetCurrentPath(tab.CurrentPath);
         _singleFilePane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
-            _configService.Settings.UseNarrowIcons, _configService.Settings.ShowSecondsInDate);
+            _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
+            _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
         _singleFilePane.SetActive(true);
         _singleFilePane.SetFocus(); // Ensure the FilePane has focus for navigation
 
@@ -615,9 +643,11 @@ public class MainWindow : Window
 
             // Update panes with diff results
             _leftPane.SetFiles(leftFiles, new HashSet<string>(), tab.SelectedIndexActive,
-                _configService.Settings.UseNarrowIcons, _configService.Settings.ShowSecondsInDate);
+                _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
             _rightPane.SetFiles(rightFiles, new HashSet<string>(), tab.SelectedIndexPassive,
-                _configService.Settings.UseNarrowIcons, _configService.Settings.ShowSecondsInDate);
+                _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
 
             _statusPane.AddCommandHistory($"Diff: {diffResults.Count} items compared - = identical, → left only, ← right only, » left newer, « right newer");
         }
@@ -745,6 +775,26 @@ public class MainWindow : Window
             _statusPane.AddCommandHistory($"Options saved - Update mode: {dialog.GetSettings().DirectoryUpdateMode}");
             UpdateDisplay(); // Refresh to apply new settings
         }
+    }
+
+    /// <summary>
+    /// Adjusts the pane split by the specified delta
+    /// </summary>
+    private void AdjustPaneSplit(int delta)
+    {
+        _paneSplitPercent = Math.Clamp(_paneSplitPercent + delta, 10, 90);
+        UpdatePaneSplit();
+    }
+
+    /// <summary>
+    /// Updates the pane widths based on current split percentage
+    /// </summary>
+    private void UpdatePaneSplit()
+    {
+        _leftPane.Width = Dim.Percent(_paneSplitPercent);
+        _rightPane.X = Pos.Percent(_paneSplitPercent);
+        _rightPane.Width = Dim.Percent(100 - _paneSplitPercent);
+        SetNeedsDisplay();
     }
 }
 

@@ -13,7 +13,9 @@ public class OptionsDialog : Dialog
     private CheckBox _showSecondsCheckBox = null!;
     private CheckBox _showHiddenFilesCheckBox = null!;
     private CheckBox _followSymlinksCheckBox = null!;
+    private CheckBox _showFileIconsCheckBox = null!;
     private CheckBox _useNarrowIconsCheckBox = null!;
+    private CheckBox _showExtensionsInColumnCheckBox = null!;
     private CheckBox _autoCalculateSizeCheckBox = null!;
 
     public bool WasSaved { get; private set; }
@@ -26,7 +28,9 @@ public class OptionsDialog : Dialog
             ShowSecondsInDate = currentSettings.ShowSecondsInDate,
             ShowHiddenFiles = currentSettings.ShowHiddenFiles,
             FollowSymlinks = currentSettings.FollowSymlinks,
+            ShowFileIcons = currentSettings.ShowFileIcons,
             UseNarrowIcons = currentSettings.UseNarrowIcons,
+            ShowExtensionsInColumn = currentSettings.ShowExtensionsInColumn,
             AutoCalculateDirectorySize = currentSettings.AutoCalculateDirectorySize
         };
 
@@ -67,11 +71,23 @@ public class OptionsDialog : Dialog
         };
         Add(_showSecondsCheckBox);
 
+        _showFileIconsCheckBox = new CheckBox(3, y++, "Show file/directory icons (D/F)")
+        {
+            Checked = _settings.ShowFileIcons
+        };
+        Add(_showFileIconsCheckBox);
+
         _useNarrowIconsCheckBox = new CheckBox(3, y++, "Use narrow icons (fixes alignment)")
         {
             Checked = _settings.UseNarrowIcons
         };
         Add(_useNarrowIconsCheckBox);
+
+        _showExtensionsInColumnCheckBox = new CheckBox(3, y++, "Show extensions in separate column")
+        {
+            Checked = _settings.ShowExtensionsInColumn
+        };
+        Add(_showExtensionsInColumnCheckBox);
 
         _showHiddenFilesCheckBox = new CheckBox(3, y++, "Show hidden files")
         {
@@ -122,7 +138,9 @@ public class OptionsDialog : Dialog
         _settings.ShowSecondsInDate = _showSecondsCheckBox.Checked;
         _settings.ShowHiddenFiles = _showHiddenFilesCheckBox.Checked;
         _settings.FollowSymlinks = _followSymlinksCheckBox.Checked;
+        _settings.ShowFileIcons = _showFileIconsCheckBox.Checked;
         _settings.UseNarrowIcons = _useNarrowIconsCheckBox.Checked;
+        _settings.ShowExtensionsInColumn = _showExtensionsInColumnCheckBox.Checked;
         _settings.AutoCalculateDirectorySize = _autoCalculateSizeCheckBox.Checked;
 
         WasSaved = true;

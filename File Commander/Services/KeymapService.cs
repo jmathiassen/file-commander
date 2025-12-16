@@ -89,6 +89,11 @@ public class KeymapService
         // --- Options and Configuration ---
         _keymap[(Key)'o' | Key.CtrlMask] = SHOW_OPTIONS;
         _keymap[Key.F2] = CALCULATE_SIZE;  // F2 or Space to calculate directory size
+
+        // --- Pane Management ---
+        _keymap[(Key)'+' | Key.CtrlMask] = INCREASE_LEFT_PANE;
+        _keymap[(Key)'-' | Key.CtrlMask] = DECREASE_LEFT_PANE;
+        _keymap[(Key)'=' | Key.CtrlMask] = RESET_PANE_SPLIT;
     }
 
     /// <summary>

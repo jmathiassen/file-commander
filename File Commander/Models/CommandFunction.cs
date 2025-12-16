@@ -75,10 +75,14 @@ public enum CommandFunction
     QUIT_APPLICATION,
     SHOW_HELP,
 
-
     // Options and Configuration
     SHOW_OPTIONS,
     CALCULATE_SIZE,
+
+    // Pane Management
+    INCREASE_LEFT_PANE,
+    DECREASE_LEFT_PANE,
+    RESET_PANE_SPLIT,
 
     // Enum management
     NONE,
