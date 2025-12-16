@@ -17,6 +17,7 @@ public class OptionsDialog : Dialog
     private CheckBox _useNarrowIconsCheckBox = null!;
     private CheckBox _showExtensionsInColumnCheckBox = null!;
     private CheckBox _autoCalculateSizeCheckBox = null!;
+    private CheckBox _autoStartQueueCheckBox = null!;
 
     public bool WasSaved { get; private set; }
 
@@ -31,7 +32,8 @@ public class OptionsDialog : Dialog
             ShowFileIcons = currentSettings.ShowFileIcons,
             UseNarrowIcons = currentSettings.UseNarrowIcons,
             ShowExtensionsInColumn = currentSettings.ShowExtensionsInColumn,
-            AutoCalculateDirectorySize = currentSettings.AutoCalculateDirectorySize
+            AutoCalculateDirectorySize = currentSettings.AutoCalculateDirectorySize,
+            AutoStartQueue = currentSettings.AutoStartQueue
         };
 
         Width = 70;
@@ -106,6 +108,12 @@ public class OptionsDialog : Dialog
         };
         Add(_autoCalculateSizeCheckBox);
 
+        _autoStartQueueCheckBox = new CheckBox(3, y++, "Auto-start queue (uncheck for manual queue start)")
+        {
+            Checked = _settings.AutoStartQueue
+        };
+        Add(_autoStartQueueCheckBox);
+
         _followSymlinksCheckBox = new CheckBox(3, y++, "Follow symbolic links")
         {
             Checked = _settings.FollowSymlinks
@@ -142,6 +150,7 @@ public class OptionsDialog : Dialog
         _settings.UseNarrowIcons = _useNarrowIconsCheckBox.Checked;
         _settings.ShowExtensionsInColumn = _showExtensionsInColumnCheckBox.Checked;
         _settings.AutoCalculateDirectorySize = _autoCalculateSizeCheckBox.Checked;
+        _settings.AutoStartQueue = _autoStartQueueCheckBox.Checked;
 
         WasSaved = true;
         Terminal.Gui.Application.RequestStop();

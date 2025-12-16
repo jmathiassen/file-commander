@@ -84,6 +84,11 @@ public enum CommandFunction
     DECREASE_LEFT_PANE,
     RESET_PANE_SPLIT,
 
+    // Queue Control
+    PAUSE_QUEUE,
+    RESUME_QUEUE,
+    CLEAR_QUEUE,
+
     // Enum management
     NONE,
     UNKNOWN

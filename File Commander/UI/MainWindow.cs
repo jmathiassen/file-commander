@@ -17,6 +17,7 @@ public class MainWindow : Window
     private readonly KeymapService _keymapService;
     private readonly StatusPaneView _statusPane;
     private readonly ConfigService _configService;
+    private readonly IntelligentTaskQueueService _taskQueue;
 
     private FilePaneView _leftPane = null!;
     private FilePaneView _rightPane = null!;
@@ -30,14 +31,15 @@ public class MainWindow : Window
     private TreeView _treeView = null!;
     private TextView _previewPane = null!;
     private FilePaneView _singleFilePane = null!;
-
-    public MainWindow(TabManager tabManager, CommandHandler commandHandler, KeymapService keymapService, StatusPaneView statusPane, ConfigService configService)
+    public MainWindow(TabManager tabManager, CommandHandler commandHandler, KeymapService keymapService,
+        StatusPaneView statusPane, ConfigService configService, IntelligentTaskQueueService taskQueue)
     {
         _tabManager = tabManager;
         _commandHandler = commandHandler;
         _keymapService = keymapService;
         _statusPane = statusPane;
         _configService = configService;
+        _taskQueue = taskQueue;
 
         Title = "File Commander (fcom)";
 
@@ -358,14 +360,16 @@ public class MainWindow : Window
             _leftPane.SetCurrentPath(tab.CurrentPath);
             _leftPane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
-                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
+                _taskQueue);
             _leftPane.SetActive(tab.IsLeftPaneActive);
 
             _rightPane.Title = $"Right: {tab.PathPassive}";
             _rightPane.SetCurrentPath(tab.PathPassive);
             _rightPane.SetFiles(tab.FilesPassive, tab.MarkedFiles, tab.SelectedIndexPassive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
-                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
+                _taskQueue);
             _rightPane.SetActive(!tab.IsLeftPaneActive);
 
             // CRITICAL FIX: Explicitly set focus on the active pane
@@ -431,7 +435,8 @@ public class MainWindow : Window
         _singleFilePane.SetCurrentPath(tab.CurrentPath);
         _singleFilePane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
             _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
-            _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
+            _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
+            _taskQueue);
         _singleFilePane.SetActive(true);
         _singleFilePane.SetFocus(); // Ensure the FilePane has focus for navigation
 
@@ -647,10 +652,12 @@ public class MainWindow : Window
             // Update panes with diff results
             _leftPane.SetFiles(leftFiles, new HashSet<string>(), tab.SelectedIndexActive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
-                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
+                _taskQueue);
             _rightPane.SetFiles(rightFiles, new HashSet<string>(), tab.SelectedIndexPassive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
-                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn);
+                _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
+                _taskQueue);
 
             _statusPane.AddCommandHistory($"Diff: {diffResults.Count} items compared - = identical, → left only, ← right only, » left newer, « right newer");
         }

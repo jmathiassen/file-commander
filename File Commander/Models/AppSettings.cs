@@ -65,5 +65,10 @@ public class AppSettings
     /// Auto-calculate directory sizes on marking
     /// </summary>
     public bool AutoCalculateDirectorySize { get; set; } = true;
+
+    /// <summary>
+    /// Automatically start queue when jobs are added (false = manual start required)
+    /// </summary>
+    public bool AutoStartQueue { get; set; } = true;
 }
 

@@ -1,5 +1,6 @@
 using Terminal.Gui;
 using File_Commander.Models;
+using File_Commander.Services;
 
 namespace File_Commander.UI;
 
@@ -86,7 +87,8 @@ public class FilePaneView : FrameView
     }
 
     public void SetFiles(List<FileItem> files, HashSet<string> markedFiles, int selectedIndex = 0,
-        bool showIcons = false, bool useNarrowIcons = true, bool showSeconds = true, bool showExtensionColumn = false)
+        bool showIcons = false, bool useNarrowIcons = true, bool showSeconds = true, bool showExtensionColumn = false,
+        IntelligentTaskQueueService? queueService = null)
     {
         _files = files;
         _markedFiles = markedFiles;
@@ -109,6 +111,25 @@ public class FilePaneView : FrameView
 
         var displayItems = files.Select(f =>
         {
+            // Check if file is queued
+            var queueIndicator = "";
+            if (queueService != null && f.Name != "..")
+            {
+                var queuedJobs = queueService.GetQueuedJobsForPath(f.FullPath).ToList();
+                if (queuedJobs.Any())
+                {
+                    // Show operation indicators: C=Copy, M=Move, D=Delete
+                    var ops = string.Join("", queuedJobs.Select(j => j.Operation switch
+                    {
+                        OperationType.Copy => "C",
+                        OperationType.Move => "M",
+                        OperationType.Delete => "D",
+                        _ => "?"
+                    }).Distinct());
+                    queueIndicator = $"[{ops}]";
+                }
+            }
+
             var mark = markedFiles.Contains(f.FullPath) ? "*" : " ";
             var icon = showIcons
                 ? (useNarrowIcons
@@ -139,14 +160,15 @@ public class FilePaneView : FrameView
                 name = f.Name;
             }
 
-            // Truncate filename if needed
-            if (name.Length > maxNameWidth)
+            // Truncate filename if needed (accounting for queue indicator)
+            var nameWithQueue = queueIndicator + name;
+            if (nameWithQueue.Length > maxNameWidth)
             {
-                name = name.Substring(0, maxNameWidth - 3) + "...";
+                nameWithQueue = nameWithQueue.Substring(0, maxNameWidth - 3) + "...";
             }
 
             // Build the display string with vertical bars between columns
-            var namePadded = name.PadRight(maxNameWidth);
+            var namePadded = nameWithQueue.PadRight(maxNameWidth);
             var extPadded = showExtensionColumn ? ext.PadRight(extWidth) : "";
             var sizePadded = f.FormattedSize.PadLeft(sizeWidth);
             var datePadded = f.GetFormattedDate(showSeconds);

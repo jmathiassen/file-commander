@@ -66,15 +66,55 @@ public class StatusPaneView : FrameView
             Height = Dim.Fill()
         };
 
+        // Control buttons at the top
+        var pauseButton = new Button("Pause (Ctrl+P)")
+        {
+            X = 0,
+            Y = 0
+        };
+        pauseButton.Clicked += () => _taskQueue.PauseQueue();
+
+        var resumeButton = new Button("Resume (Ctrl+R)")
+        {
+            X = Pos.Right(pauseButton) + 2,
+            Y = 0
+        };
+        resumeButton.Clicked += () => _taskQueue.ResumeQueue();
+
+        var clearButton = new Button("Clear Queue")
+        {
+            X = Pos.Right(resumeButton) + 2,
+            Y = 0
+        };
+        clearButton.Clicked += () => _taskQueue.ClearQueue();
+
+        var statusLabel = new Label("Queue: Running")
+        {
+            X = Pos.Right(clearButton) + 4,
+            Y = 0
+        };
+
+        // Update status label when queue state changes
+        _taskQueue.QueueStateChanged += (s, isPaused) =>
+        {
+            Terminal.Gui.Application.MainLoop?.Invoke(() =>
+            {
+                statusLabel.Text = isPaused ? "Queue: PAUSED" : "Queue: Running";
+                statusLabel.ColorScheme = isPaused
+                    ? new ColorScheme { Normal = new Terminal.Gui.Attribute(Color.BrightYellow, Color.Black) }
+                    : Colors.Base;
+            });
+        };
+
         _jobQueueListView = new ListView
         {
             X = 0,
-            Y = 0,
+            Y = 1,
             Width = Dim.Fill(),
             Height = Dim.Fill()
         };
 
-        view.Add(_jobQueueListView);
+        view.Add(pauseButton, resumeButton, clearButton, statusLabel, _jobQueueListView);
         return view;
     }
 

@@ -39,7 +39,7 @@ class Program
         try
         {
             // Create and run main window
-            var mainWindow = new MainWindow(tabManager, commandHandler, keymapService, statusPane, configService);
+            var mainWindow = new MainWindow(tabManager, commandHandler, keymapService, statusPane, configService, taskQueueService);
             Terminal.Gui.Application.Run(mainWindow);
         }
         finally

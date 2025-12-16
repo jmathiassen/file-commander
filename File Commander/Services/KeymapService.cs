@@ -94,6 +94,11 @@ public class KeymapService
         _keymap[(Key)'+' | Key.CtrlMask] = INCREASE_LEFT_PANE;
         _keymap[(Key)'-' | Key.CtrlMask] = DECREASE_LEFT_PANE;
         _keymap[(Key)'=' | Key.CtrlMask] = RESET_PANE_SPLIT;
+
+        // --- Queue Control ---
+        _keymap[(Key)'p' | Key.CtrlMask] = PAUSE_QUEUE;
+        _keymap[(Key)'r' | Key.CtrlMask] = RESUME_QUEUE;
+        _keymap[Key.DeleteChar | Key.CtrlMask] = CLEAR_QUEUE;
     }
 
     /// <summary>

@@ -674,10 +674,19 @@ public class CommandHandler
     }
 
     /// <summary>
-    /// Helper: Queue files as jobs
+    /// Helper: Queue files as jobs with duplicate detection
     /// </summary>
     private async Task QueueFilesAsync(List<string> sourcePaths, string destPath, OperationType operation)
     {
+        int successCount = 0;
+        int skipCount = 0;
+
+        // Pause queue if auto-start is disabled
+        if (!_configService.Settings.AutoStartQueue && !_taskQueue.IsPaused)
+        {
+            _taskQueue.PauseQueue();
+        }
+
         foreach (var sourcePath in sourcePaths)
         {
             var fileName = Path.GetFileName(sourcePath);
@@ -690,8 +699,31 @@ public class CommandHandler
                 DestinationPath = destFilePath
             };
 
-            await _taskQueue.EnqueueAsync(job);
+            try
+            {
+                await _taskQueue.EnqueueAsync(job);
+                successCount++;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Job already queued or conflicts
+                StatusMessage?.Invoke(this, $"Skipped: {ex.Message}");
+                skipCount++;
+            }
         }
+
+        var summary = $"Queued {successCount} job(s)";
+        if (skipCount > 0)
+        {
+            summary += $", skipped {skipCount} (already queued or conflicts)";
+        }
+
+        if (!_configService.Settings.AutoStartQueue && successCount > 0)
+        {
+            summary += " - Queue PAUSED, press Ctrl+R to start";
+        }
+
+        StatusMessage?.Invoke(this, summary);
     }
 
     /// <summary>
