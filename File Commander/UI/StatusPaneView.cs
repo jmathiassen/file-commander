@@ -5,10 +5,10 @@ using File_Commander.Models;
 namespace File_Commander.UI;
 
 /// <summary>
-/// Tabbed status pane for job monitoring, command history, and system info
-/// Phase 3: Complex monitoring and history tracking
+/// Bottom panel with tabs for job queue, activity log, and system info
+/// Main monitoring and control interface
 /// </summary>
-public class StatusPaneView : FrameView
+public class StatusPaneView : View
 {
     private readonly IntelligentTaskQueueService _taskQueue;
     private TabView _tabView = null!;
@@ -19,9 +19,10 @@ public class StatusPaneView : FrameView
     private readonly List<string> _activityLog = new();
     private const int MAX_LOG_ENTRIES = 200;
 
-    public StatusPaneView(IntelligentTaskQueueService taskQueue) : base("Status")
+    public StatusPaneView(IntelligentTaskQueueService taskQueue)
     {
         _taskQueue = taskQueue;
+
         InitializeUI();
         SetupEventHandlers();
     }
@@ -30,7 +31,7 @@ public class StatusPaneView : FrameView
     {
         X = 0;
         Width = Dim.Fill();
-        Height = 6; // Increased default height for better visibility
+        Height = 20; // Fixed at 20 lines
 
         _tabView = new TabView
         {
@@ -298,24 +299,6 @@ public class StatusPaneView : FrameView
         _tabView.SelectedTab = _tabView.Tabs.ElementAt(nextIndex);
     }
 
-    private int _currentHeight = 6;
-
-    /// <summary>
-    /// Resizes the status pane (toggle between normal and expanded)
-    /// </summary>
-    public void ToggleSize()
-    {
-        if (_currentHeight == 6)
-        {
-            _currentHeight = 12;
-            Height = 12;
-        }
-        else
-        {
-            _currentHeight = 6;
-            Height = 6;
-        }
-    }
 
     private static string FormatBytes(long bytes)
     {

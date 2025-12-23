@@ -28,12 +28,28 @@ public class FileItem
             {
                 if (CalculatedSize.HasValue)
                 {
-                    return FormatBytes(CalculatedSize.Value);
+                    return FormatBytes(CalculatedSize.Value, FileSizeFormat.KiB);
                 }
                 return "<DIR>";
             }
-            return FormatBytes(Size);
+            return FormatBytes(Size, FileSizeFormat.KiB);
         }
+    }
+
+    /// <summary>
+    /// Gets formatted size with specific format
+    /// </summary>
+    public string GetFormattedSize(FileSizeFormat format)
+    {
+        if (IsDirectory)
+        {
+            if (CalculatedSize.HasValue)
+            {
+                return FormatBytes(CalculatedSize.Value, format);
+            }
+            return "<DIR>";
+        }
+        return FormatBytes(Size, format);
     }
 
     /// <summary>
@@ -51,16 +67,35 @@ public class FileItem
             : LastModified.ToString("yyyy-MM-dd HH:mm");
     }
 
-    private static string FormatBytes(long bytes)
+    private static string FormatBytes(long bytes, FileSizeFormat format)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        if (format == FileSizeFormat.Bytes)
+        {
+            // Format with thousands separator
+            return bytes.ToString("N0").Replace(",", "'");
+        }
+
+        string[] sizes;
+        int divisor;
+
+        if (format == FileSizeFormat.KB)
+        {
+            sizes = new[] { "B", "KB", "MB", "GB", "TB" };
+            divisor = 1000;
+        }
+        else // FileSizeFormat.KiB
+        {
+            sizes = new[] { "B", "KiB", "MiB", "GiB", "TiB" };
+            divisor = 1024;
+        }
+
         int order = 0;
         double size = bytes;
 
-        while (size >= 1024 && order < sizes.Length - 1)
+        while (size >= divisor && order < sizes.Length - 1)
         {
             order++;
-            size /= 1024;
+            size /= divisor;
         }
 
         return $"{size:0.##} {sizes[order]}";

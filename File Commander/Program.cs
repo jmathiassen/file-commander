@@ -1,5 +1,4 @@
-﻿using Terminal.Gui;
-using File_Commander.Application;
+﻿using File_Commander.Application;
 using File_Commander.Services;
 using File_Commander.UI;
 
@@ -14,7 +13,7 @@ class Program
         var fileSystemService = new FileSystemService();
         var fileOperationExecutor = new FileOperationExecutor();
         var taskQueueService = new IntelligentTaskQueueService(fileOperationExecutor);
-        var keymapService = new KeymapService();
+        var keymapService = new KeymapService(configService);
 
         // Initialize application layer
         var tabManager = new TabManager(fileSystemService, configService);

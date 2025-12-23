@@ -18,6 +18,7 @@ public class FilePaneView : FrameView
 
     public event EventHandler<FileItem>? FileSelected;
     public event EventHandler<FileItem>? FileActivated;
+    public event EventHandler? PaneClicked; // Fired when pane is clicked to switch focus
 
     public FilePaneView(string title) : base(title)
     {
@@ -33,6 +34,7 @@ public class FilePaneView : FrameView
 
         _listView.SelectedItemChanged += OnSelectedItemChanged;
         _listView.OpenSelectedItem += OnOpenSelectedItem;
+        _listView.Enter += (_) => PaneClicked?.Invoke(this, EventArgs.Empty); // Fire when pane gets focus
 
         _statusBar = new Label
         {
@@ -59,12 +61,11 @@ public class FilePaneView : FrameView
 
             var file = _files[args.Row];
 
-            // Don't override selection colors - Terminal.Gui handles this
-            // Just set the text color for directories when NOT selected
+            // Keep consistent background color - only change text color for directories when NOT selected
             if (file.IsDirectory && file.Name != ".." && args.Row != _listView.SelectedItem)
             {
-                // Use BrightCyan for directories, keep default background
-                args.RowAttribute = new Terminal.Gui.Attribute(Color.BrightCyan, Color.Black);
+                // Use BrightCyan for directories - Terminal.Gui will handle the background
+                args.RowAttribute = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black);
             }
             // For selected items, Terminal.Gui will use the focus/selection colors automatically
         };
@@ -88,14 +89,23 @@ public class FilePaneView : FrameView
 
     public void SetFiles(List<FileItem> files, HashSet<string> markedFiles, int selectedIndex = 0,
         bool showIcons = false, bool useNarrowIcons = true, bool showSeconds = true, bool showExtensionColumn = false,
-        IntelligentTaskQueueService? queueService = null)
+        IntelligentTaskQueueService? queueService = null, FileSizeFormat sizeFormat = FileSizeFormat.KiB)
     {
         _files = files;
         _markedFiles = markedFiles;
 
         // Calculate available width for filename
         var dateWidth = showSeconds ? 19 : 16; // "yyyy-MM-dd HH:mm:ss" or "yyyy-MM-dd HH:mm"
-        var sizeWidth = 12; // Right-aligned size column
+
+        // Size width varies based on format
+        int sizeWidth = sizeFormat switch
+        {
+            FileSizeFormat.Bytes => 16, // Up to "999'999'999'999 B"
+            FileSizeFormat.KB => 12,    // "999.99 GB"
+            FileSizeFormat.KiB => 12,   // "999.99 GiB"
+            _ => 12
+        };
+
         var markWidth = 1; // "*" or " " - no space after mark
         var iconWidth = showIcons ? 2 : 0; // "D " or "F " only if enabled
         var extWidth = showExtensionColumn ? 8 : 0; // Extension column width
@@ -160,6 +170,12 @@ public class FilePaneView : FrameView
                 name = f.Name;
             }
 
+            // Surround directory names with brackets (except ..)
+            if (f.IsDirectory && f.Name != "..")
+            {
+                name = $"[{name}]";
+            }
+
             // Truncate filename if needed (accounting for queue indicator)
             var nameWithQueue = queueIndicator + name;
             if (nameWithQueue.Length > maxNameWidth)
@@ -170,7 +186,7 @@ public class FilePaneView : FrameView
             // Build the display string with vertical bars between columns
             var namePadded = nameWithQueue.PadRight(maxNameWidth);
             var extPadded = showExtensionColumn ? ext.PadRight(extWidth) : "";
-            var sizePadded = f.FormattedSize.PadLeft(sizeWidth);
+            var sizePadded = f.GetFormattedSize(sizeFormat).PadLeft(sizeWidth);
             var datePadded = f.GetFormattedDate(showSeconds);
 
             return showExtensionColumn
@@ -191,6 +207,14 @@ public class FilePaneView : FrameView
     {
         _isActive = isActive;
         ColorScheme = isActive ? Colors.Base : Colors.TopLevel;
+    }
+
+    /// <summary>
+    /// Gets the currently selected index in the ListView
+    /// </summary>
+    public int GetSelectedIndex()
+    {
+        return _listView.SelectedItem;
     }
 
     /// <summary>

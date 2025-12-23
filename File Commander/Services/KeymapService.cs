@@ -12,10 +12,190 @@ namespace File_Commander.Services;
 public class KeymapService
 {
     private readonly Dictionary<Key, CommandFunction> _keymap = new();
+    private readonly ConfigService? _configService;
 
-    public KeymapService()
+    public KeymapService(ConfigService? configService = null)
     {
+        _configService = configService;
+
+        if (_configService != null)
+        {
+            _configService.SettingsChanged += (s, settings) => RebuildKeymap();
+        }
+
         SetDefaults();
+
+        // Override with user settings if available
+        if (_configService != null)
+        {
+            RebuildKeymap();
+        }
+    }
+
+    private void RebuildKeymap()
+    {
+        if (_configService == null)
+            return;
+
+        System.Diagnostics.Debug.WriteLine("KeymapService: Rebuilding keymap from settings...");
+
+        // Clear existing mappings (except navigation which is always needed)
+        var keysToRemove = _keymap.Keys
+            .Where(k => !IsNavigationKey(k))
+            .ToList();
+
+        foreach (var key in keysToRemove)
+        {
+            _keymap.Remove(key);
+        }
+
+        System.Diagnostics.Debug.WriteLine($"KeymapService: After cleanup, {_keymap.Count} navigation keys remain");
+
+        // Rebuild from settings
+        foreach (var binding in _configService.Settings.KeyBindings.Values)
+        {
+            var function = ParseCommandFunction(binding.Command);
+            if (function == CommandFunction.UNKNOWN)
+            {
+                System.Diagnostics.Debug.WriteLine($"KeymapService: Skipping unknown command: {binding.Command}");
+                continue;
+            }
+
+            foreach (var keyString in binding.Keys)
+            {
+                var key = ParseKeyString(keyString);
+                if (key != Key.Unknown)
+                {
+                    _keymap[key] = function;
+                    System.Diagnostics.Debug.WriteLine($"KeymapService: Mapped '{keyString}' ({key}) to {function}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"KeymapService: Failed to parse key string: '{keyString}'");
+                }
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"KeymapService: Rebuild complete, total keys: {_keymap.Count}");
+    }
+
+    private bool IsNavigationKey(Key key)
+    {
+        // Keep basic navigation keys from being removed
+        return key == Key.CursorUp || key == Key.CursorDown ||
+               key == Key.Home || key == Key.End ||
+               key == Key.PageUp || key == Key.PageDown ||
+               key == Key.Enter || key == Key.Backspace ||
+               key == Key.Tab;
+    }
+
+    private CommandFunction ParseCommandFunction(string command)
+    {
+        return command switch
+        {
+            "Refresh" => REFRESH_PANE,
+            "Copy" => STAGE_COPY,
+            "Move" => STAGE_MOVE,
+            "CreateDirectory" => CREATE_DIRECTORY,
+            "Delete" => DELETE_FILES,
+            "Quit" => QUIT_APPLICATION,
+            "Options" => SHOW_OPTIONS,
+            "Mark" => TOGGLE_MARK_STAY,
+            "MarkAll" => MARK_ALL,
+            "UnmarkAll" => UNMARK_ALL,
+            "InvertSelection" => INVERT_SELECTION,
+            "CalculateSize" => CALCULATE_SIZE,
+            "ViewFile" => VIEW_FILE,
+            "EditFile" => EDIT_FILE,
+            "Search" => CommandFunction.UNKNOWN, // Not implemented yet
+            "GoToParent" => PARENT_DIRECTORY,
+            "SwitchPane" => SWITCH_PANE,
+            "ShowHidden" => CommandFunction.UNKNOWN, // Not implemented yet
+            _ => CommandFunction.UNKNOWN
+        };
+    }
+
+    private Key ParseKeyString(string keyString)
+    {
+        // Parse key strings like "F5", "Ctrl+O", "Shift+F5", etc.
+        var parts = keyString.Split('+');
+        Key baseKey = Key.Unknown;
+        Key modifiers = Key.Unknown;
+
+        foreach (var part in parts)
+        {
+            var trimmed = part.Trim();
+
+            if (trimmed.Equals("Ctrl", StringComparison.OrdinalIgnoreCase))
+            {
+                modifiers |= Key.CtrlMask;
+            }
+            else if (trimmed.Equals("Shift", StringComparison.OrdinalIgnoreCase))
+            {
+                modifiers |= Key.ShiftMask;
+            }
+            else if (trimmed.Equals("Alt", StringComparison.OrdinalIgnoreCase))
+            {
+                modifiers |= Key.AltMask;
+            }
+            else if (trimmed.StartsWith("F", StringComparison.OrdinalIgnoreCase) &&
+                     trimmed.Length > 1 &&
+                     int.TryParse(trimmed.Substring(1), out var fNum))
+            {
+                // Function keys
+                baseKey = fNum switch
+                {
+                    1 => Key.F1,
+                    2 => Key.F2,
+                    3 => Key.F3,
+                    4 => Key.F4,
+                    5 => Key.F5,
+                    6 => Key.F6,
+                    7 => Key.F7,
+                    8 => Key.F8,
+                    9 => Key.F9,
+                    10 => Key.F10,
+                    11 => Key.F11,
+                    12 => Key.F12,
+                    _ => Key.Unknown
+                };
+            }
+            else if (trimmed.Equals("Space", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.Space;
+            }
+            else if (trimmed.Equals("Insert", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.InsertChar;
+            }
+            else if (trimmed.Equals("Delete", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.DeleteChar;
+            }
+            else if (trimmed.Equals("Backspace", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.Backspace;
+            }
+            else if (trimmed.Equals("Tab", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.Tab;
+            }
+            else if (trimmed.Equals("Enter", StringComparison.OrdinalIgnoreCase))
+            {
+                baseKey = Key.Enter;
+            }
+            else if (trimmed.Length == 1)
+            {
+                // Single character - convert to lowercase for consistency
+                baseKey = (Key)char.ToLower(trimmed[0]);
+            }
+        }
+
+        // Combine base key with modifiers
+        if (baseKey == Key.Unknown)
+            return Key.Unknown;
+
+        return baseKey | modifiers;
     }
 
     private void SetDefaults()
@@ -108,8 +288,12 @@ public class KeymapService
     {
         if (_keymap.TryGetValue(key, out var function))
         {
+            // Debug output
+            System.Diagnostics.Debug.WriteLine($"KeymapService: Resolved {key} to {function}");
             return function;
         }
+        // Debug: Key not found
+        System.Diagnostics.Debug.WriteLine($"KeymapService: Key {key} not found in keymap (count: {_keymap.Count})");
         return CommandFunction.UNKNOWN;
     }
 

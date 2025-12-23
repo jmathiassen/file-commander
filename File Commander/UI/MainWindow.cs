@@ -10,7 +10,7 @@ namespace File_Commander.UI;
 /// Phase 2: Configurable keymap architecture
 /// Phase 3: Tabbed status pane
 /// </summary>
-public class MainWindow : Window
+public class MainWindow : Toplevel
 {
     private readonly TabManager _tabManager;
     private readonly CommandHandler _commandHandler;
@@ -26,6 +26,7 @@ public class MainWindow : Window
     private View _tabBar = null!;
     private List<Label> _tabLabels = new();
     private int _paneSplitPercent = 50; // Left pane percentage
+    private int _statusPaneHeight = 6; // Track status pane height for layout
 
     // Single pane mode components
     private TreeView _treeView = null!;
@@ -41,7 +42,6 @@ public class MainWindow : Window
         _configService = configService;
         _taskQueue = taskQueue;
 
-        Title = "File Commander (fcom)";
 
         InitializeUI();
         SetupEventHandlers();
@@ -49,6 +49,81 @@ public class MainWindow : Window
         // Initial refresh
         _tabManager.RefreshBothPanes();
         UpdateDisplay();
+    }
+
+    private void OnLeftPaneClicked()
+    {
+        var tab = _tabManager.ActiveTab;
+
+        // Only switch if we're in dual-pane mode and right pane is currently active
+        if (tab.DisplayMode == DisplayMode.DualPane && !tab.IsLeftPaneActive)
+        {
+            // Sync the current selected index from the right pane before switching
+            tab.SelectedIndexPassive = _rightPane.GetSelectedIndex();
+
+            // Switch to left pane
+            _tabManager.SwitchActivePane();
+        }
+
+        // Always sync the selected index from the left pane
+        tab.SelectedIndexActive = _leftPane.GetSelectedIndex();
+        _tabManager.NotifyStateChanged();
+    }
+
+    private void OnRightPaneClicked()
+    {
+        var tab = _tabManager.ActiveTab;
+
+        // Only switch if we're in dual-pane mode and left pane is currently active
+        if (tab.DisplayMode == DisplayMode.DualPane && tab.IsLeftPaneActive)
+        {
+            // Sync the current selected index from the left pane before switching
+            tab.SelectedIndexActive = _leftPane.GetSelectedIndex();
+
+            // Switch to right pane
+            _tabManager.SwitchActivePane();
+        }
+
+        // Always sync the selected index from the right pane
+        tab.SelectedIndexPassive = _rightPane.GetSelectedIndex();
+        _tabManager.NotifyStateChanged();
+    }
+
+    private void OnLeftPaneSelectionChanged()
+    {
+        var tab = _tabManager.ActiveTab;
+
+        // Sync the selected index whenever cursor moves in left pane
+        if (tab.DisplayMode == DisplayMode.SinglePane || tab.IsLeftPaneActive)
+        {
+            tab.SelectedIndexActive = _leftPane.GetSelectedIndex();
+        }
+    }
+
+    private void OnRightPaneSelectionChanged()
+    {
+        var tab = _tabManager.ActiveTab;
+
+        // Sync the selected index whenever cursor moves in right pane
+        if (tab.DisplayMode == DisplayMode.DualPane && !tab.IsLeftPaneActive)
+        {
+            tab.SelectedIndexPassive = _rightPane.GetSelectedIndex();
+        }
+    }
+
+    public override void LayoutSubviews()
+    {
+        base.LayoutSubviews();
+
+        // Fixed status pane at 20 lines
+        const int statusHeight = 20;
+        var newContainerHeight = Dim.Fill() - (1 + statusHeight); // tab (1) + status pane (20)
+
+        _dualPaneContainer.Height = newContainerHeight;
+        _singlePaneContainer.Height = newContainerHeight;
+
+        // Keep status pane at bottom
+        _statusPane.Y = Pos.AnchorEnd(statusHeight);
     }
 
     private void InitializeUI()
@@ -69,7 +144,7 @@ public class MainWindow : Window
             X = 0,
             Y = 1,  // Below tab bar
             Width = Dim.Fill(),
-            Height = Dim.Fill() - 7  // Leave room for tab bar (1) and status pane (6)
+            Height = Dim.Fill() - 21  // Leave room for tab bar (1) and status pane (20)
         };
 
         _singlePaneContainer.Add(_treeView, _singleFilePane, _previewPane);
@@ -91,17 +166,21 @@ public class MainWindow : Window
         };
 
         _leftPane.FileActivated += (s, file) => _commandHandler.HandleEnter();
+        _leftPane.PaneClicked += (s, e) => OnLeftPaneClicked();
+        _leftPane.FileSelected += (s, file) => OnLeftPaneSelectionChanged();
 
-        // Right pane
+        // Right pane - use Dim.Fill() to ensure it reaches the edge
         _rightPane = new FilePaneView("Right Pane")
         {
             X = Pos.Percent(50),
             Y = 0,
-            Width = Dim.Percent(50),
+            Width = Dim.Fill(), // Use Fill instead of Percent to reach edge
             Height = Dim.Fill()
         };
 
         _rightPane.FileActivated += (s, file) => _commandHandler.HandleEnter();
+        _rightPane.PaneClicked += (s, e) => OnRightPaneClicked();
+        _rightPane.FileSelected += (s, file) => OnRightPaneSelectionChanged();
 
         _dualPaneContainer.Add(_leftPane, _rightPane);
 
@@ -139,9 +218,9 @@ public class MainWindow : Window
 
         _singlePaneContainer.Add(_treeView, _singleFilePane, _previewPane);
 
-        // Status pane (replaces status and help bars) - increased default height
-        _statusPane.Y = Pos.AnchorEnd(6);
-        _statusPane.Height = 6;
+        // Status pane - fixed at 20 lines
+        _statusPane.Y = Pos.AnchorEnd(20);
+        _statusPane.Height = 20;
 
         // Initialize tab labels
         UpdateTabBar();
@@ -237,8 +316,8 @@ public class MainWindow : Window
 
             if (function == CommandFunction.QUIT_APPLICATION)
             {
-                Terminal.Gui.Application.Top.Running = false;
                 e.Handled = true;
+                Terminal.Gui.Application.RequestStop();
                 return;
             }
 
@@ -251,18 +330,8 @@ public class MainWindow : Window
 
             if (function == CommandFunction.TOGGLE_STATUS_PANE_SIZE)
             {
-                _statusPane.ToggleSize();
-
-                // Adjust main pane container height based on current status pane height
-                var statusPaneHeight = _statusPane.Frame.Height;
-                var newMainHeight = statusPaneHeight <= 6
-                    ? Dim.Fill() - 7   // Normal: tab (1) + status (6)
-                    : Dim.Fill() - 13; // Expanded: tab (1) + status (12)
-
-                _dualPaneContainer.Height = newMainHeight;
-                _singlePaneContainer.Height = newMainHeight;
-
-                SetNeedsDisplay();
+                // Status pane is fixed at 20 lines for now
+                // This command is disabled
                 e.Handled = true;
                 return;
             }
@@ -361,7 +430,7 @@ public class MainWindow : Window
             _leftPane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
                 _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
-                _taskQueue);
+                _taskQueue, _configService.Settings.FileSizeFormat);
             _leftPane.SetActive(tab.IsLeftPaneActive);
 
             _rightPane.Title = $"Right: {tab.PathPassive}";
@@ -369,7 +438,7 @@ public class MainWindow : Window
             _rightPane.SetFiles(tab.FilesPassive, tab.MarkedFiles, tab.SelectedIndexPassive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
                 _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
-                _taskQueue);
+                _taskQueue, _configService.Settings.FileSizeFormat);
             _rightPane.SetActive(!tab.IsLeftPaneActive);
 
             // CRITICAL FIX: Explicitly set focus on the active pane
@@ -436,7 +505,7 @@ public class MainWindow : Window
         _singleFilePane.SetFiles(tab.FilesActive, tab.MarkedFiles, tab.SelectedIndexActive,
             _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
             _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
-            _taskQueue);
+            _taskQueue, _configService.Settings.FileSizeFormat);
         _singleFilePane.SetActive(true);
         _singleFilePane.SetFocus(); // Ensure the FilePane has focus for navigation
 
@@ -653,11 +722,11 @@ public class MainWindow : Window
             _leftPane.SetFiles(leftFiles, new HashSet<string>(), tab.SelectedIndexActive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
                 _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
-                _taskQueue);
+                _taskQueue, _configService.Settings.FileSizeFormat);
             _rightPane.SetFiles(rightFiles, new HashSet<string>(), tab.SelectedIndexPassive,
                 _configService.Settings.ShowFileIcons, _configService.Settings.UseNarrowIcons,
                 _configService.Settings.ShowSecondsInDate, _configService.Settings.ShowExtensionsInColumn,
-                _taskQueue);
+                _taskQueue, _configService.Settings.FileSizeFormat);
 
             _statusPane.AddCommandHistory($"Diff: {diffResults.Count} items compared - = identical, → left only, ← right only, » left newer, « right newer");
         }
@@ -716,12 +785,19 @@ public class MainWindow : Window
             x += label.Text.Length + 1;
         }
 
-        // Add help text at the end
+        // Add help text at the end showing key bindings for main operations
+        var quitKeys = _configService.Settings.KeyBindings.TryGetValue("Quit", out var quitBinding)
+            ? string.Join("/", quitBinding.Keys)
+            : "F10";
+        var optionsKeys = _configService.Settings.KeyBindings.TryGetValue("Options", out var optionsBinding)
+            ? string.Join("/", optionsBinding.Keys)
+            : "Ctrl+O";
+
         var helpText = new Label
         {
             X = Pos.AnchorEnd(50),
             Y = 0,
-            Text = "Ctrl+T:New Ctrl+W:Close Alt+1-9:Switch Ctrl+Z:Status↕ Ctrl+I:StatusTab",
+            Text = $"{optionsKeys}:Options {quitKeys}:Quit",
             ColorScheme = Colors.Menu
         };
 

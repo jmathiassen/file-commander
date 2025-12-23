@@ -12,7 +12,7 @@ public class TabManager
     private readonly ConfigService _configService;
     private readonly List<TabState> _tabs = new();
     private int _activeTabIndex = 0;
-    private FileSystemWatcher? _watcher;
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
 
     public TabState ActiveTab => _tabs[_activeTabIndex];
     public IReadOnlyList<TabState> Tabs => _tabs.AsReadOnly();
@@ -146,20 +146,54 @@ public class TabManager
         var tab = ActiveTab;
         var normalizedPath = _fileSystemService.NormalizePath(path);
 
+        // Remember the previous directory name to position cursor on it
+        string? previousDirName = null;
+
         if (tab.DisplayMode == DisplayMode.SinglePane || tab.IsLeftPaneActive)
         {
+            // Get the name of the current directory before changing
+            previousDirName = Path.GetFileName(tab.CurrentPath);
+
             tab.CurrentPath = normalizedPath;
             tab.SelectedIndexActive = 0;
             tab.ScrollOffsetActive = 0;
         }
         else
         {
+            // Get the name of the current directory before changing
+            previousDirName = Path.GetFileName(tab.PathPassive);
+
             tab.PathPassive = normalizedPath;
             tab.SelectedIndexPassive = 0;
             tab.ScrollOffsetPassive = 0;
         }
 
         RefreshActivePane();
+
+        // If we navigated up (to parent), position cursor on the directory we just exited
+        if (!string.IsNullOrEmpty(previousDirName))
+        {
+            var files = tab.IsLeftPaneActive ? tab.FilesActive : tab.FilesPassive;
+            var indexOfPrevious = files.FindIndex(f => f.Name == previousDirName);
+
+            if (indexOfPrevious >= 0)
+            {
+                if (tab.DisplayMode == DisplayMode.SinglePane || tab.IsLeftPaneActive)
+                {
+                    tab.SelectedIndexActive = indexOfPrevious;
+                }
+                else
+                {
+                    tab.SelectedIndexPassive = indexOfPrevious;
+                }
+
+                // Notify to update UI
+                TabStateChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        // Re-setup watcher for the new directory
+        SetupDirectoryWatcher(_configService.Settings);
     }
 
     /// <summary>
@@ -229,9 +263,12 @@ public class TabManager
     /// </summary>
     private void SetupDirectoryWatcher(AppSettings settings)
     {
-        // Dispose existing watcher
-        _watcher?.Dispose();
-        _watcher = null;
+        // Dispose all existing watchers
+        foreach (var watcher in _watchers.Values)
+        {
+            watcher.Dispose();
+        }
+        _watchers.Clear();
 
         // Don't create watcher if manual mode
         if (settings.DirectoryUpdateMode == DirectoryUpdateMode.Manual)
@@ -245,29 +282,46 @@ public class TabManager
             return;
         }
 
-        string watchPath;
+        var tab = ActiveTab;
 
-        if (settings.DirectoryUpdateMode == DirectoryUpdateMode.ActiveTabOnly)
+        // Collect unique paths to watch
+        var pathsToWatch = new HashSet<string>();
+
+        // Always watch the current (left) pane
+        pathsToWatch.Add(tab.CurrentPath);
+
+        // In dual-pane mode, also watch the right pane if it's a different path
+        if (tab.DisplayMode == DisplayMode.DualPane && tab.PathPassive != tab.CurrentPath)
         {
-            // Watch only the active tab's current path
-            watchPath = ActiveTab.CurrentPath;
-        }
-        else // AllTabs
-        {
-            // For all tabs mode, watch the active tab's path
-            // Note: Proper implementation would require multiple watchers for all tabs
-            // For now, we watch the active tab and refresh all tabs on changes
-            watchPath = ActiveTab.CurrentPath;
+            pathsToWatch.Add(tab.PathPassive);
         }
 
+        // Create watchers for each unique path
+        foreach (var path in pathsToWatch)
+        {
+            CreateWatcher(path);
+        }
+    }
+
+    /// <summary>
+    /// Creates a FileSystemWatcher for the specified path
+    /// </summary>
+    private void CreateWatcher(string watchPath)
+    {
         if (!Directory.Exists(watchPath))
+        {
+            return;
+        }
+
+        // Don't create duplicate watcher
+        if (_watchers.ContainsKey(watchPath))
         {
             return;
         }
 
         try
         {
-            _watcher = new FileSystemWatcher(watchPath)
+            var watcher = new FileSystemWatcher(watchPath)
             {
                 NotifyFilter = NotifyFilters.FileName |
                               NotifyFilters.DirectoryName |
@@ -277,35 +331,98 @@ public class TabManager
                 IncludeSubdirectories = false
             };
 
-            _watcher.Changed += OnDirectoryChanged;
-            _watcher.Created += OnDirectoryChanged;
-            _watcher.Deleted += OnDirectoryChanged;
-            _watcher.Renamed += OnDirectoryChanged;
+            // Capture the path in the lambda to identify which directory changed
+            var capturedPath = watchPath;
+            watcher.Changed += (s, e) => OnDirectoryChanged(e, capturedPath, "modified");
+            watcher.Created += (s, e) => OnDirectoryChanged(e, capturedPath, "created");
+            watcher.Deleted += (s, e) => OnDirectoryChanged(e, capturedPath, "deleted");
+            watcher.Renamed += (s, e) => OnDirectoryRenamed(e, capturedPath);
+
+            _watchers[watchPath] = watcher;
         }
         catch (Exception)
         {
             // Ignore errors setting up watcher (e.g., permission denied)
-            _watcher?.Dispose();
-            _watcher = null;
         }
     }
 
     /// <summary>
     /// Handles directory change events from FileSystemWatcher
     /// </summary>
-    private void OnDirectoryChanged(object sender, FileSystemEventArgs e)
+    private void OnDirectoryChanged(FileSystemEventArgs e, string watchedPath, string changeType)
     {
         // Use MainLoop.Invoke to safely update UI from background thread
         Terminal.Gui.Application.MainLoop?.Invoke(() =>
         {
-            if (_configService.Settings.DirectoryUpdateMode == DirectoryUpdateMode.AllTabs)
+            var tab = ActiveTab;
+            var fileName = Path.GetFileName(e.FullPath);
+            var isDirectory = Directory.Exists(e.FullPath);
+            var itemType = isDirectory ? "directory" : "file";
+
+            // Determine which pane(s) this path belongs to
+            var panes = new List<string>();
+            if (watchedPath == tab.CurrentPath)
             {
-                // Refresh all panes in all tabs
+                panes.Add("left");
+            }
+            if (tab.DisplayMode == DisplayMode.DualPane && watchedPath == tab.PathPassive && watchedPath != tab.CurrentPath)
+            {
+                panes.Add("right");
+            }
+
+            // Log the change with pane identification
+            var paneDesc = panes.Count > 0 ? $"[{string.Join("/", panes)} pane] " : "";
+            DirectoryRefreshed?.Invoke(this,
+                $"{paneDesc}{itemType} {changeType}: {fileName}");
+
+            // Refresh appropriate pane(s)
+            if (tab.DisplayMode == DisplayMode.DualPane)
+            {
                 RefreshBothPanes();
             }
-            else // ActiveTabOnly
+            else
             {
-                // Only refresh the active tab
+                RefreshActivePane();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Handles file/directory rename events
+    /// </summary>
+    private void OnDirectoryRenamed(RenamedEventArgs e, string watchedPath)
+    {
+        Terminal.Gui.Application.MainLoop?.Invoke(() =>
+        {
+            var tab = ActiveTab;
+            var oldName = Path.GetFileName(e.OldFullPath);
+            var newName = Path.GetFileName(e.FullPath);
+            var isDirectory = Directory.Exists(e.FullPath);
+            var itemType = isDirectory ? "directory" : "file";
+
+            // Determine which pane(s) this path belongs to
+            var panes = new List<string>();
+            if (watchedPath == tab.CurrentPath)
+            {
+                panes.Add("left");
+            }
+            if (tab.DisplayMode == DisplayMode.DualPane && watchedPath == tab.PathPassive && watchedPath != tab.CurrentPath)
+            {
+                panes.Add("right");
+            }
+
+            // Log the rename with pane identification
+            var paneDesc = panes.Count > 0 ? $"[{string.Join("/", panes)} pane] " : "";
+            DirectoryRefreshed?.Invoke(this,
+                $"{paneDesc}{itemType} renamed: {oldName} → {newName}");
+
+            // Refresh appropriate pane(s)
+            if (tab.DisplayMode == DisplayMode.DualPane)
+            {
+                RefreshBothPanes();
+            }
+            else
+            {
                 RefreshActivePane();
             }
         });
